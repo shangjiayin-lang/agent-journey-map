@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ai-partner-creator — Agent Journey Map</title>
+<style>
+  :root[data-theme="light"] {
+    --page-bg:#f8fafc; --toolbar-bg:#ffffff; --toolbar-text:#1e293b; --toolbar-border:#e2e8f0;
+    --legend-bg:#ffffff; --legend-text:#1e293b; --legend-border:#cbd5e1;
+    --btn-bg:#ffffff; --btn-text:#1e293b; --btn-border:#cbd5e1;
+    --btn-active-bg:#2563eb; --btn-active-text:#ffffff;
+    --focus-ring:#2563eb; --menu-bg:#ffffff; --menu-text:#1e293b; --menu-border:#cbd5e1;
+    --title-g1:#0369a1; --title-g2:#6c47ff;
+  }
+  :root[data-theme="dark"] {
+    --page-bg:#0f172a; --toolbar-bg:#1e293b; --toolbar-text:#e2e8f0; --toolbar-border:#334155;
+    --legend-bg:#1e293b; --legend-text:#e2e8f0; --legend-border:#475569;
+    --btn-bg:#1e293b; --btn-text:#e2e8f0; --btn-border:#475569;
+    --btn-active-bg:#60a5fa; --btn-active-text:#0f172a;
+    --focus-ring:#60a5fa; --menu-bg:#1e293b; --menu-text:#e2e8f0; --menu-border:#475569;
+    --title-g1:#38bdf8; --title-g2:#a78bfa;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { width:100%; height:100%; }
+  body {
+    background:var(--page-bg); color:var(--toolbar-text);
+    font-family:system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+    transition:background .2s;
+  }
+  #toolbar {
+    height:56px; flex:0 0 56px; display:flex; align-items:center; gap:8px;
+    padding:0 16px; background:var(--toolbar-bg);
+    border-bottom:1px solid var(--toolbar-border); z-index:10;
+  }
+  #toolbar h1 {
+    font-size:17px; font-weight:700; margin-right:auto;
+    background:linear-gradient(90deg,var(--title-g1),var(--title-g2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .tbtn {
+    font-size:13px; padding:7px 12px; border-radius:8px; cursor:pointer;
+    background:var(--btn-bg); color:var(--btn-text); border:1px solid var(--btn-border);
+  }
+  .tbtn:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+  .tbtn.active { background:var(--btn-active-bg); color:var(--btn-active-text); border-color:var(--btn-active-bg); }
+  #canvas-wrap { flex:1; overflow:auto; }
+  svg { display:block; }
+  #legend {
+    position:fixed; right:18px; bottom:18px; z-index:9;
+    background:var(--legend-bg); color:var(--legend-text);
+    border:1px solid var(--legend-border); border-radius:10px;
+    padding:12px 16px; font-size:13px; line-height:1.9; min-width:230px;
+  }
+  #legend b { display:block; margin-bottom:4px; font-size:13px; }
+  .lg-row { display:flex; align-items:center; gap:8px; }
+  .lg-swatch { width:14px; height:14px; border-radius:4px; flex:0 0 14px; }
+  .lg-line { width:22px; height:0; border-top:2px dashed; flex:0 0 22px; }
+  #ctx-menu {
+    position:fixed; display:none; z-index:20; min-width:120px;
+    background:var(--menu-bg); color:var(--menu-text);
+    border:1px solid var(--menu-border); border-radius:8px; overflow:hidden;
+    box-shadow:0 6px 24px rgba(0,0,0,.25); font-size:13px;
+  }
+  #ctx-menu div { padding:9px 14px; cursor:pointer; }
+  #ctx-menu div:hover { background:var(--btn-active-bg); color:var(--btn-active-text); }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>ai-partner-creator — Agent Journey Map</h1>
+  <button class="tbtn active" data-mode="select">选择</button>
+  <button class="tbtn" data-mode="add-rect">+矩形</button>
+  <button class="tbtn" data-mode="add-diamond">+菱形</button>
+  <button class="tbtn" data-mode="add-risk">+风险</button>
+  <button class="tbtn" data-mode="connect">连线</button>
+  <button class="tbtn" data-mode="delete">删除</button>
+  <button class="tbtn" id="export-btn">导出SVG</button>
+  <button class="tbtn" id="theme-toggle" aria-label="切换到浅色主题">☀️ Light</button>
+</div>
+
+<div id="canvas-wrap">
+  <svg id="svg" viewBox="0 0 1820 926" preserveAspectRatio="xMinYMin meet"
+       xmlns="http://www.w3.org/2000/svg"
+       style="width:100%;height:auto;display:block;overflow:visible;">
+    <defs>
+      <marker id="arrowhead" markerWidth="8" markerHeight="6"
+              refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+        <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+      </marker>
+      <marker id="arrowhead-dashed" markerWidth="8" markerHeight="6"
+              refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+        <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+      </marker>
+    </defs>
+    <g id="dynamic-layer"></g>
+  </svg>
+</div>
+
+<div id="legend">
+  <b>图例</b>
+  <div class="lg-row"><span class="lg-swatch" data-sw="user"></span>用户 User</div>
+  <div class="lg-row"><span class="lg-swatch" data-sw="agent"></span>智能体推理 Agent Reasoning</div>
+  <div class="lg-row"><span class="lg-swatch" data-sw="system"></span>系统调用 System &amp; API</div>
+  <div class="lg-row"><span class="lg-swatch" data-sw="risk"></span>风险与缓解 Risk &amp; Mitigation</div>
+  <div class="lg-row"><span class="lg-line" id="lg-dash"></span>风险连线（虚线）</div>
+</div>
+
+<div id="ctx-menu">
+  <div id="ctx-edit">编辑文字</div>
+  <div id="ctx-del">删除节点</div>
+</div>
+
+<script>
+'use strict';
+/* ════════════ 主题系统（色板已通过 WCAG 2.1 AA 验证）════════════ */
+const THEMES = {
+  light: {
+    pageBg:'#f8fafc',   canvasBg:'#f8fafc',
+    toolbarBg:'#ffffff', toolbarText:'#1e293b', toolbarBorder:'#e2e8f0',
+    legendBg:'#ffffff',  legendText:'#1e293b',  legendBorder:'#cbd5e1',
+    laneLabelText:'#ffffff',
+    edge:'#475569', edgeDashed:'#64748b', edgeLabel:'#334155',
+    selection:'#2563eb',
+    lanes: {
+      user:   { bg:'#eff6ff', hdr:'#1d4ed8' },
+      agent:  { bg:'#f0fdf4', hdr:'#15803d' },
+      system: { bg:'#faf5ff', hdr:'#7e22ce' },
+      risk:   { bg:'#fff7ed', hdr:'#c2410c' }
+    },
+    nodes: {
+      user:       { fill:'#dbeafe', stroke:'#2563eb', text:'#1e3a8a' },
+      agent:      { fill:'#dcfce7', stroke:'#16a34a', text:'#14532d' },
+      system:     { fill:'#f3e8ff', stroke:'#9333ea', text:'#581c87' },
+      risk:       { fill:'#fee2e2', stroke:'#dc2626', text:'#7f1d1d' },
+      mitigation: { fill:'#ffedd5', stroke:'#ea580c', text:'#7c2d12' }
+    }
+  },
+  dark: {
+    pageBg:'#0f172a',   canvasBg:'#0f172a',
+    toolbarBg:'#1e293b', toolbarText:'#e2e8f0', toolbarBorder:'#334155',
+    legendBg:'#1e293b',  legendText:'#e2e8f0',  legendBorder:'#475569',
+    laneLabelText:'',
+    edge:'#94a3b8', edgeDashed:'#94a3b8', edgeLabel:'#cbd5e1',
+    selection:'#60a5fa',
+    lanes: {
+      user:   { bg:'#16213e', hdr:'#1e3a8a', labelText:'#dbeafe' },
+      agent:  { bg:'#122b1d', hdr:'#14532d', labelText:'#dcfce7' },
+      system: { bg:'#231435', hdr:'#581c87', labelText:'#f3e8ff' },
+      risk:   { bg:'#2b1216', hdr:'#7c2d12', labelText:'#ffedd5' }
+    },
+    nodes: {
+      user:       { fill:'#1e3a8a', stroke:'#60a5fa', text:'#dbeafe' },
+      agent:      { fill:'#14532d', stroke:'#4ade80', text:'#dcfce7' },
+      system:     { fill:'#581c87', stroke:'#c084fc', text:'#f3e8ff' },
+      risk:       { fill:'#7f1d1d', stroke:'#f87171', text:'#fee2e2' },
+      mitigation: { fill:'#7c2d12', stroke:'#fb923c', text:'#ffedd5' }
+    }
+  }
+};
+
+let currentTheme = (() => {
+  try {
+    const s = localStorage.getItem('ajm-theme');
+    if (s === 'light' || s === 'dark') return s;
+  } catch (e) { /* 沙箱禁用 localStorage 时降级 */ }
+  return (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+})();
+
+function theme() { return THEMES[currentTheme]; }
+
+function setTheme(t) {
+  currentTheme = t;
+  try { localStorage.setItem('ajm-theme', t); } catch (e) {}
+  document.documentElement.setAttribute('data-theme', t);
+  const btn = document.getElementById('theme-toggle');
+  btn.textContent = (t === 'dark' ? '☀️ Light' : '🌙 Dark');
+  btn.setAttribute('aria-label', t === 'dark' ? '切换到浅色主题' : '切换到深色主题');
+  syncMarkerColors();
+  renderLegend();
+  render();
+}
+
+function syncMarkerColors() {
+  document.querySelector('#arrowhead polygon').setAttribute('fill', theme().edge);
+  document.querySelector('#arrowhead-dashed polygon').setAttribute('fill', theme().edgeDashed);
+}
+
+function renderLegend() {
+  const th = theme();
+  document.querySelectorAll('.lg-swatch').forEach(el => {
+    el.style.background = th.nodes[el.dataset.sw].fill;
+    el.style.border = '1.5px solid ' + th.nodes[el.dataset.sw].stroke;
+  });
+  document.getElementById('lg-dash').style.borderTopColor = th.edgeDashed;
+}
+
+/* ════════════ 常量与数据 ════════════ */
+const TOOLBAR_H = 56;
+const LBL_W     = 56;
+const CANVAS_W  = 1820;
+const SVGNS     = 'http://www.w3.org/2000/svg';
+
+let lanes = [
+  { id:'user',   name:'用户\nUser',                   h:140, startY:0 },
+  { id:'agent',  name:'智能体推理\nAgent Reasoning',   h:330, startY:0 },
+  { id:'system', name:'系统调用\nSystem & API',        h:150, startY:0 },
+  { id:'risk',   name:'风险与缓解\nRisk & Mitigation', h:250, startY:0 }
+];
+
+/* y 为泳道内偏移，initNodes() 转为 SVG 绝对坐标。role 决定取色 */
+const RAW_NODES = [
+  // 用户泳道
+  { id:'u1', lane:'user', x:140,  y:38, w:190, h:64, type:'message', role:'user', text:'描述Agent\n功能需求' },
+  { id:'u2', lane:'user', x:660,  y:38, w:190, h:64, type:'message', role:'user', text:'确认技能\n匹配选择' },
+  { id:'u3', lane:'user', x:1320, y:38, w:200, h:64, type:'message', role:'user', text:'提供知识库\n文档(可选)' },
+  // 智能体推理泳道
+  { id:'a1',  lane:'agent', x:120,  y:30,  w:200, h:60, type:'rect',    role:'agent', text:'解析用户需求\n推断名称与领域' },
+  { id:'a2',  lane:'agent', x:380,  y:20,  w:160, h:80, type:'diamond', role:'agent', text:'需求\n是否清晰?' },
+  { id:'a3',  lane:'agent', x:600,  y:30,  w:210, h:60, type:'rect',    role:'agent', text:'生成结构化问题\n确认功能方向' },
+  { id:'a4',  lane:'agent', x:880,  y:30,  w:200, h:60, type:'rect',    role:'agent', text:'生成角色设定\n定位/职责/原则' },
+  { id:'a5',  lane:'agent', x:120,  y:130, w:200, h:60, type:'rect',    role:'agent', text:'扫描skills/目录\n匹配候选技能' },
+  { id:'a6',  lane:'agent', x:380,  y:120, w:160, h:80, type:'diamond', role:'agent', text:'候选技能\n是否存在?' },
+  { id:'a7',  lane:'agent', x:600,  y:130, w:200, h:60, type:'rect',    role:'agent', text:'写入--config\nJSON配置文件' },
+  { id:'a8',  lane:'agent', x:880,  y:130, w:210, h:60, type:'rect',    role:'agent', text:'调用init-agent.js\n初始化Agent目录' },
+  { id:'a9',  lane:'agent', x:1160, y:130, w:200, h:60, type:'rect',    role:'agent', text:'调用add-skill.js\n添加选中技能' },
+  { id:'a10', lane:'agent', x:1430, y:130, w:230, h:60, type:'rect',    role:'agent', text:'处理知识库文件\n更新assistant.json' },
+  { id:'a11', lane:'agent', x:120,  y:230, w:230, h:60, type:'rect',    role:'agent', text:'调用validate-agent\n执行校验(draft→strict)' },
+  { id:'a12', lane:'agent', x:420,  y:220, w:160, h:80, type:'diamond', role:'agent', text:'strict\n是否通过?' },
+  { id:'a13', lane:'agent', x:650,  y:230, w:210, h:60, type:'rect',    role:'agent', text:'自动修复问题\n内部补齐重新校验' },
+  { id:'a14', lane:'agent', x:930,  y:230, w:220, h:60, type:'rect',    role:'agent', text:'输出:::render指令\n交付Agent卡片' },
+  // 系统调用泳道
+  { id:'s1', lane:'system', x:160,  y:44, w:220, h:60, type:'rect', role:'system', text:'读取SKILL.md\nfrontmatter/manifest' },
+  { id:'s2', lane:'system', x:460,  y:44, w:220, h:60, type:'rect', role:'system', text:'init-agent.js\n创建目录和配置文件' },
+  { id:'s3', lane:'system', x:760,  y:44, w:220, h:60, type:'rect', role:'system', text:'add-skill.js\n复制技能文件到Agent' },
+  { id:'s4', lane:'system', x:1060, y:44, w:230, h:60, type:'rect', role:'system', text:'validate-agent.js\ndraft/strict模式校验' },
+  // 风险与缓解泳道
+  { id:'r1', lane:'risk', x:120,  y:30,  w:215, h:60, type:'note', role:'risk',       text:'⚠ 中文CLI传参\nUTF-8编码截断' },
+  { id:'m1', lane:'risk', x:400,  y:30,  w:215, h:60, type:'rect', role:'mitigation', text:'✅ 通过--config\nJSON文件传参' },
+  { id:'r2', lane:'risk', x:700,  y:30,  w:215, h:60, type:'note', role:'risk',       text:'⚠ 外部技能\nPrompt Injection' },
+  { id:'m2', lane:'risk', x:980,  y:30,  w:225, h:60, type:'rect', role:'mitigation', text:'✅ 仅接受项目内\nskills/本地路径' },
+  { id:'r3', lane:'risk', x:120,  y:145, w:215, h:60, type:'note', role:'risk',       text:'⚠ 角色设定\n质量不达标' },
+  { id:'m3', lane:'risk', x:400,  y:145, w:215, h:60, type:'rect', role:'mitigation', text:'✅ 自动补全三要素\n重新校验至通过' },
+  { id:'r4', lane:'risk', x:700,  y:145, w:215, h:60, type:'note', role:'risk',       text:'⚠ 中间校验失败\n暴露给用户' },
+  { id:'m4', lane:'risk', x:980,  y:145, w:225, h:60, type:'rect', role:'mitigation', text:'✅ 内部静默修复\n最多暴露一次结果' }
+];
+
+let edges = [
+  { id:'e1',  from:'u1',  to:'a1',  label:'',        dashed:false },
+  { id:'e2',  from:'a1',  to:'a2',  label:'',        dashed:false },
+  { id:'e3',  from:'a2',  to:'a3',  label:'No',      dashed:false },
+  { id:'e4',  from:'a3',  to:'u1',  label:'补充信息', dashed:false },
+  { id:'e5',  from:'a2',  to:'a5',  label:'Yes',     dashed:false },
+  { id:'e6',  from:'a5',  to:'a6',  label:'',        dashed:false },
+  { id:'e7',  from:'a6',  to:'u2',  label:'Yes 确认', dashed:false },
+  { id:'e8',  from:'a6',  to:'a3',  label:'No',      dashed:false },
+  { id:'e9',  from:'u2',  to:'a4',  label:'',        dashed:false },
+  { id:'e10', from:'a4',  to:'a7',  label:'',        dashed:false },
+  { id:'e11', from:'a7',  to:'a8',  label:'',        dashed:false },
+  { id:'e12', from:'a8',  to:'s2',  label:'',        dashed:false },
+  { id:'e13', from:'a8',  to:'a9',  label:'',        dashed:false },
+  { id:'e14', from:'a9',  to:'s3',  label:'',        dashed:false },
+  { id:'e15', from:'s3',  to:'s1',  label:'',        dashed:false },
+  { id:'e16', from:'u3',  to:'a10', label:'',        dashed:false },
+  { id:'e17', from:'a9',  to:'a10', label:'',        dashed:false },
+  { id:'e18', from:'a10', to:'a11', label:'',        dashed:false },
+  { id:'e19', from:'a11', to:'s4',  label:'',        dashed:false },
+  { id:'e20', from:'a11', to:'a12', label:'校验结果', dashed:false },
+  { id:'e21', from:'a12', to:'a13', label:'No',      dashed:false },
+  { id:'e22', from:'a13', to:'a11', label:'重新校验', dashed:false },
+  { id:'e23', from:'a12', to:'a14', label:'Yes 完成', dashed:false },
+  { id:'e24', from:'r1',  to:'m1',  label:'',        dashed:true },
+  { id:'e25', from:'r2',  to:'m2',  label:'',        dashed:true },
+  { id:'e26', from:'r3',  to:'m3',  label:'',        dashed:true },
+  { id:'e27', from:'r4',  to:'m4',  label:'',        dashed:true }
+];
+
+let nodes = [];
+let mode = 'select';
+let selectedId = null;
+let connectFrom = null;
+let idSeq = 100;
+
+/* ════════════ 布局初始化 ════════════ */
+function computeLanePositions() {
+  let y = TOOLBAR_H;
+  lanes.forEach(lane => { lane.startY = y; y += lane.h; });
+  return y;
+}
+
+function initNodes(rawNodes) {
+  return rawNodes.map(n => {
+    const lane = lanes.find(l => l.id === n.lane);
+    return Object.assign({}, n, { y: lane.startY + n.y });
+  });
+}
+
+function nodeColors(node) {
+  return theme().nodes[node.role] || theme().nodes.agent;
+}
+
+function laneOfY(y) {
+  for (const l of lanes) if (y >= l.startY && y < l.startY + l.h) return l;
+  return lanes[0];
+}
+
+/* ════════════ 坐标转换 ════════════ */
+function toSVGPoint(e) {
+  const svg = document.getElementById('svg');
+  const pt  = svg.createSVGPoint();
+  const src = e.touches ? e.touches[0] : e;
+  pt.x = src.clientX;
+  pt.y = src.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function hitTest(px, py) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (px >= n.x && px <= n.x + n.w && py >= n.y && py <= n.y + n.h) return n;
+  }
+  return null;
+}
+
+/* ════════════ 边路径 ════════════ */
+function getEdgePath(edge) {
+  const src = nodes.find(n => n.id === edge.from);
+  const dst = nodes.find(n => n.id === edge.to);
+  if (!src || !dst) return '';
+  const sx = src.x + src.w / 2, sy = src.y + src.h / 2;
+  const dx = dst.x + dst.w / 2, dy = dst.y + dst.h / 2;
+  const diffX = dx - sx, diffY = dy - sy;
+  let x1, y1, x2, y2;
+  if (Math.abs(diffX) >= Math.abs(diffY) * 0.6) {
+    if (diffX >= 0) { x1 = src.x + src.w; y1 = sy; x2 = dst.x;         y2 = dy; }
+    else            { x1 = src.x;         y1 = sy; x2 = dst.x + dst.w; y2 = dy; }
+    const cp  = Math.abs(x2 - x1) * 0.45;
+    const cx1 = x1 + (diffX >= 0 ?  cp : -cp), cy1 = y1;
+    const cx2 = x2 + (diffX >= 0 ? -cp :  cp), cy2 = y2;
+    return 'M' + x1 + ',' + y1 + ' C' + cx1 + ',' + cy1 + ' ' + cx2 + ',' + cy2 + ' ' + x2 + ',' + y2;
+  } else {
+    if (diffY >= 0) { x1 = sx; y1 = src.y + src.h; x2 = dx; y2 = dst.y; }
+    else            { x1 = sx; y1 = src.y;         x2 = dx; y2 = dst.y + dst.h; }
+    const cp  = Math.abs(y2 - y1) * 0.45;
+    const cy1 = y1 + (diffY >= 0 ?  cp : -cp);
+    const cy2 = y2 + (diffY >= 0 ? -cp :  cp);
+    return 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + cy1 + ' ' + x2 + ',' + cy2 + ' ' + x2 + ',' + y2;
+  }
+}
+
+function edgeMidpoint(edge) {
+  const src = nodes.find(n => n.id === edge.from);
+  const dst = nodes.find(n => n.id === edge.to);
+  if (!src || !dst) return { x:0, y:0 };
+  return { x:(src.x + src.w/2 + dst.x + dst.w/2)/2, y:(src.y + src.h/2 + dst.y + dst.h/2)/2 };
+}
+
+/* ════════════ 渲染（唯一 DOM 写入入口）════════════ */
+function el(tag, attrs) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function drawLane(parent, lane) {
+  const th = theme();
+  const lc = th.lanes[lane.id] || { bg: th.canvasBg, hdr: th.toolbarBg };
+  parent.appendChild(el('rect', { x:0, y:lane.startY, width:CANVAS_W, height:lane.h,
+    fill:lc.bg, stroke:th.toolbarBorder, 'stroke-width':1 }));
+  parent.appendChild(el('rect', { x:0, y:lane.startY, width:LBL_W, height:lane.h, fill:lc.hdr }));
+  const labelColor = (currentTheme === 'light') ? th.laneLabelText : (lc.labelText || th.legendText);
+  const cx = LBL_W / 2, cy = lane.startY + lane.h / 2;
+  const linesArr = lane.name.split('\n');
+  const t = el('text', { 'text-anchor':'middle', 'font-size':'13', 'font-weight':'600',
+    fill:labelColor, transform:'rotate(-90 ' + cx + ' ' + cy + ')', 'pointer-events':'all',
+    'font-family':'system-ui, -apple-system, sans-serif' });
+  t.style.cursor = 'pointer';
+  linesArr.forEach((line, i) => {
+    const ts = el('tspan', { x:cx, y:cy + (i - (linesArr.length - 1)/2) * 16 + 4 });
+    ts.textContent = line;
+    t.appendChild(ts);
+  });
+  t.addEventListener('dblclick', ev => {
+    ev.stopPropagation();
+    const zh = prompt('泳道中文名：', linesArr[0]); if (zh === null) return;
+    const en = prompt('泳道英文名：', linesArr[1] || ''); if (en === null) return;
+    lane.name = zh + '\n' + en;
+    render();
+  });
+  parent.appendChild(t);
+}
+
+function drawEdge(parent, edge) {
+  const th = theme();
+  const d = getEdgePath(edge);
+  if (!d) return;
+  const p = el('path', { d:d, fill:'none',
+    stroke: edge.dashed ? th.edgeDashed : th.edge, 'stroke-width':1.5,
+    'marker-end': edge.dashed ? 'url(#arrowhead-dashed)' : 'url(#arrowhead)' });
+  if (edge.dashed) p.setAttribute('stroke-dasharray', '6,4');
+  parent.appendChild(p);
+  if (edge.label) {
+    const m = edgeMidpoint(edge);
+    const bg = el('rect', { x:m.x - edge.label.length*7 - 4, y:m.y - 10,
+      width: edge.label.length*14 + 8, height:20, rx:4,
+      fill: th.canvasBg, 'fill-opacity':0.92 });
+    parent.appendChild(bg);
+    const t = el('text', { x:m.x, y:m.y + 4, 'text-anchor':'middle', 'font-size':'12',
+      fill:th.edgeLabel, 'font-family':'system-ui, -apple-system, sans-serif' });
+    t.style.cursor = 'pointer';
+    t.textContent = edge.label;
+    t.addEventListener('dblclick', ev => {
+      ev.stopPropagation();
+      const v = prompt('边标签：', edge.label);
+      if (v !== null) { edge.label = v; render(); }
+    });
+    parent.appendChild(t);
+  }
+}
+
+function drawNode(parent, node) {
+  const th = theme();
+  const c = nodeColors(node);
+  const sel = node.id === selectedId || node.id === (connectFrom && connectFrom.id);
+  const strokeColor = sel ? th.selection : c.stroke;
+  const strokeW = sel ? 3 : 1.8;
+  let shape;
+  if (node.type === 'diamond') {
+    const cx = node.x + node.w/2, cy = node.y + node.h/2;
+    shape = el('polygon', { points:
+      cx + ',' + node.y + ' ' + (node.x + node.w) + ',' + cy + ' ' +
+      cx + ',' + (node.y + node.h) + ' ' + node.x + ',' + cy,
+      fill:c.fill, stroke:strokeColor, 'stroke-width':strokeW });
+  } else if (node.type === 'note') {
+    const fold = 14, x = node.x, y = node.y, w = node.w, h = node.h;
+    shape = el('path', { d:'M' + x + ',' + y + ' h' + (w - fold) + ' l' + fold + ',' + fold +
+      ' v' + (h - fold) + ' h-' + w + ' z',
+      fill:c.fill, stroke:strokeColor, 'stroke-width':strokeW });
+  } else if (node.type === 'message') {
+    shape = el('rect', { x:node.x, y:node.y, width:node.w, height:node.h, rx:node.h/2,
+      fill:c.fill, stroke:strokeColor, 'stroke-width':strokeW });
+  } else {
+    shape = el('rect', { x:node.x, y:node.y, width:node.w, height:node.h, rx:10,
+      fill:c.fill, stroke:strokeColor, 'stroke-width':strokeW });
+  }
+  shape.style.cursor = 'move';
+  shape.dataset.nodeId = node.id;
+  parent.appendChild(shape);
+  renderNodeText(parent, node);
+}
+
+function renderNodeText(parent, node) {
+  const cx = node.x + node.w / 2;
+  const cy = node.y + node.h / 2;
+  const linesArr = node.text.split('\n');
+  const lineH = 16;
+  const startY = cy - ((linesArr.length - 1) * lineH) / 2;
+  const t = el('text', { 'text-anchor':'middle', 'dominant-baseline':'middle',
+    'font-size':'13', 'font-family':'system-ui, -apple-system, sans-serif',
+    fill: nodeColors(node).text, 'pointer-events':'none' });
+  linesArr.forEach((line, i) => {
+    const ts = el('tspan', { x:cx, y:startY + i * lineH });
+    ts.textContent = line;
+    t.appendChild(ts);
+  });
+  parent.appendChild(t);
+}
+
+function render() {
+  const dynamicLayer = document.getElementById('dynamic-layer');
+  dynamicLayer.innerHTML = '';
+  lanes.forEach(lane => drawLane(dynamicLayer, lane));
+  edges.forEach(edge => drawEdge(dynamicLayer, edge));
+  nodes.forEach(node => drawNode(dynamicLayer, node));
+}
+
+/* ════════════ 交互 ════════════ */
+let dragState = null;
+const svg = document.getElementById('svg');
+const ctxMenu = document.getElementById('ctx-menu');
+let ctxTarget = null;
+
+function onDragStart(e) {
+  if (e.button === 2) return;
+  hideCtx();
+  const pt = toSVGPoint(e);
+  const node = hitTest(pt.x, pt.y);
+
+  if (mode === 'select') {
+    if (!node) { selectedId = null; render(); return; }
+    e.preventDefault();
+    selectedId = node.id;
+    dragState = { node:node, dx:pt.x - node.x, dy:pt.y - node.y, moved:false };
+    render();
+  } else if (mode === 'connect') {
+    if (!node) { connectFrom = null; render(); return; }
+    e.preventDefault();
+    if (!connectFrom) { connectFrom = node; render(); }
+    else if (connectFrom.id !== node.id) {
+      edges.push({ id:'e' + (idSeq++), from:connectFrom.id, to:node.id, label:'',
+        dashed:(connectFrom.lane === 'risk' || node.lane === 'risk') });
+      connectFrom = null;
+      render();
+    }
+  } else if (mode === 'delete') {
+    if (node) deleteNode(node);
+  } else if (mode === 'add-rect' || mode === 'add-diamond' || mode === 'add-risk') {
+    if (node) return;
+    e.preventDefault();
+    const lane = laneOfY(pt.y);
+    const isDiamond = mode === 'add-diamond';
+    const isRisk = mode === 'add-risk';
+    const w = isDiamond ? 160 : 200, h = isDiamond ? 80 : 60;
+    nodes.push({
+      id:'n' + (idSeq++), lane:lane.id,
+      x:pt.x - w/2, y:pt.y - h/2, w:w, h:h,
+      type: isRisk ? 'note' : (isDiamond ? 'diamond' : 'rect'),
+      role: isRisk ? 'risk' : (lane.id === 'risk' ? 'mitigation' : (theme().nodes[lane.id] ? lane.id : 'agent')),
+      text: isRisk ? '⚠ 新风险' : (isDiamond ? '判断?' : '新节点')
+    });
+    render();
+  }
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  e.preventDefault();
+  const pt = toSVGPoint(e);
+  dragState.node.x = pt.x - dragState.dx;
+  dragState.node.y = pt.y - dragState.dy;
+  dragState.moved = true;
+  render();
+}
+
+function onDragEnd() { dragState = null; }
+
+function deleteNode(node) {
+  nodes = nodes.filter(n => n.id !== node.id);
+  edges = edges.filter(ed => ed.from !== node.id && ed.to !== node.id);
+  if (selectedId === node.id) selectedId = null;
+  render();
+}
+
+function editNode(node) {
+  const v = prompt('节点文字（用 \\n 换行）：', node.text.replace(/\n/g, '\\n'));
+  if (v !== null) { node.text = v.replace(/\\n/g, '\n'); render(); }
+}
+
+svg.addEventListener('mousedown', onDragStart);
+svg.addEventListener('touchstart', onDragStart, { passive:false });
+document.addEventListener('mousemove', onDragMove);
+document.addEventListener('touchmove', onDragMove, { passive:false });
+document.addEventListener('mouseup', onDragEnd);
+document.addEventListener('touchend', onDragEnd);
+
+svg.addEventListener('dblclick', e => {
+  const pt = toSVGPoint(e);
+  const node = hitTest(pt.x, pt.y);
+  if (node) editNode(node);
+});
+
+svg.addEventListener('contextmenu', e => {
+  const pt = toSVGPoint(e);
+  const node = hitTest(pt.x, pt.y);
+  if (!node) { hideCtx(); return; }
+  e.preventDefault();
+  ctxTarget = node;
+  ctxMenu.style.display = 'block';
+  ctxMenu.style.left = e.clientX + 'px';
+  ctxMenu.style.top  = e.clientY + 'px';
+});
+
+function hideCtx() { ctxMenu.style.display = 'none'; ctxTarget = null; }
+document.getElementById('ctx-edit').addEventListener('click', () => { if (ctxTarget) editNode(ctxTarget); hideCtx(); });
+document.getElementById('ctx-del').addEventListener('click',  () => { if (ctxTarget) deleteNode(ctxTarget); hideCtx(); });
+document.addEventListener('click', e => { if (!ctxMenu.contains(e.target)) hideCtx(); });
+
+/* 工具模式切换 */
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    mode = btn.dataset.mode;
+    connectFrom = null;
+    document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b === btn));
+    render();
+  });
+});
+
+/* 导出 SVG（使用当前主题颜色） */
+document.getElementById('export-btn').addEventListener('click', () => {
+  const clone = svg.cloneNode(true);
+  const bg = document.createElementNS(SVGNS, 'rect');
+  const vb = svg.getAttribute('viewBox').split(' ');
+  bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+  bg.setAttribute('width', vb[2]); bg.setAttribute('height', vb[3]);
+  bg.setAttribute('fill', theme().canvasBg);
+  clone.insertBefore(bg, clone.firstChild.nextSibling);
+  const blob = new Blob(
+    ['<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone)],
+    { type:'image/svg+xml;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'agent-journey-map-ai-partner-creator-' + currentTheme + '.svg';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* 主题切换按钮 */
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+});
+
+/* ════════════ 启动 ════════════ */
+window.addEventListener('load', () => {
+  const totalH = computeLanePositions();
+  document.getElementById('svg').setAttribute('viewBox', '0 0 ' + CANVAS_W + ' ' + totalH);
+  nodes = initNodes(RAW_NODES);
+  setTheme(currentTheme); // 同步按钮文案、marker、legend，并完成首次 render
+});
+</script>
+</body>
+</html>
